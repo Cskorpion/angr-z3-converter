@@ -1,0 +1,28 @@
+[project]
+name = "angr-z3-converter"
+version = "0.1.0"
+description = "Generate machine instructions, simulate with angr, dump as python code"
+authors = [
+    {name = "Christoph Jung"},
+]
+dependencies = [
+    "hypothesis",
+    "angr"
+]
+requires-python = "<3.12,>=3.9"
+readme = "README.md"
+license = {text = "MIT"}
+
+[dependency-groups]
+test = ["pytest"]
+
+[project.scripts]
+angrsmtdump = "angrsmtdump.__main__:main"
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+[tool.pdm]
+distribution = true
+package-dir = "src"
