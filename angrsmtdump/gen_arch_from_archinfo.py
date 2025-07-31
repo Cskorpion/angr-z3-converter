@@ -23,6 +23,6 @@ def gen(archs, outfile):
             file.write(s)
         
 if __name__ == "__main__":
-    import sys, os, decompile
-    file =  os.path.join(os.path.dirname(os.path.abspath(decompile.__file__)), "gen_archs.py")
+    import sys, os, angrsmtdump
+    file =  os.path.join(os.path.dirname(os.path.abspath(angrsmtdump.__file__)), "gen_archs.py")
     gen(sys.argv[1:], file)

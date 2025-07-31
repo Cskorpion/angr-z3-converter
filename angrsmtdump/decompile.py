@@ -1,16 +1,9 @@
 import angr, claripy
-import z3
 import archinfo
-import struct
-
-####   angr on py2   ####
-# pip install gitdb2==2.0.6
-# pip install future==0.16.0
-# pip install cffi==1.7.0
-# pip install angr
-####   ###########   ####
+import logging
 
 def get_z3_for_machine_code_rv64(code, load_addr=0, regs_to_init_dict={}):
+    logging.getLogger('angr').setLevel('FATAL')
     regs_to_init_dict = regs_to_init_dict if regs_to_init_dict != {} else {"pc": claripy.BVV(0, 64)}
     byte_mc_code = preprocess_mc(code, True, 4)
     project, state = init_project(byte_mc_code, archinfo.ArchRISCV64(), load_addr, 0x00060663.to_bytes(4, byteorder="little"), len(byte_mc_code) * 4)
@@ -19,6 +12,8 @@ def get_z3_for_machine_code_rv64(code, load_addr=0, regs_to_init_dict={}):
     init_regs.update(concrete_init_regs)
     init_mem = state.memory
     res_regs, res_mem = step_bb_ret_regs_and_mem(project, state, "x12")
+    if res_regs == None and res_mem == None:
+        return None, None, None, None
     return res_regs, res_mem, init_regs, init_mem
 
 def step_bb_ret_regs_and_mem(project, state, branch_reg):
@@ -26,16 +21,15 @@ def step_bb_ret_regs_and_mem(project, state, branch_reg):
     simulation = simulation.step()
     states = simulation.active
     if len(states) == 2:
-        #print("exec ok pc:", states[0].regs.pc)
         return states[1].regs, states[1].memory # 1 = false
     elif len(states) == 1:
         # case: x12 was set to a const by code
-        #print("exec ok pc:", states[0].regs.pc)
-        print("only one state, %s must have been set by code", branch_reg)
+        print("found only one state, %s must have been set by code" % branch_reg)
         return states[0].regs, states[0].memory
     elif len(simulation.errored) > 0:
         for err in simulation.errored:
             print(err)
+        return None, None
         assert 0, "error"
     import claripy, archinfo
     for regname in list(archinfo.ArchRISCV64().registers.keys()):

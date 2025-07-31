@@ -1,8 +1,7 @@
 import claripy, archinfo
-from decompile import gen_archs
+from angrsmtdump import gen_archs
 
 PY2_EXECUTION_CLASS = """class Execution(object):
-
     def __init__(self, code, arch, init_regs, init_mem, res_regs, res_mem, load_addr):
         self.code = code
         self.arch = arch
@@ -32,6 +31,8 @@ def dump_all_arch_class_str():
     return "\n".join(s)
 
 def extract_all_regs_mem(res_regs , res_mem,  init_regs, init_mem, arch):
+    if None in (res_regs , res_mem,  init_regs, init_mem, arch):
+        return res_regs , res_mem,  init_regs, init_mem
     return extract_registers(res_regs, arch), extract_memory(res_mem, []), extract_registers(init_regs, arch), extract_memory(init_mem, [])
 
 def extract_registers(registers, arch):
@@ -61,8 +62,10 @@ class Execution(object):
         self.result_reg_values = res_regs
         self.result_memory_values = res_mem 
         self.load_addr = load_addr
+        self.broken =  None in (res_regs , res_mem,  init_regs, init_mem, arch)
 
     def to_py2(self, pref=""):
+        if self.broken: return "\'Broken\’\n"
         code = []
         pref = "_" + pref
         code.append(pref + "_code = %s " % str(self.code))
