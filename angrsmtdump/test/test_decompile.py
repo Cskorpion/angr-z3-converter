@@ -1,5 +1,6 @@
 import os
 import angrsmtdump
+import subprocess
 from angrsmtdump.decompile import get_z3_for_machine_code_rv64
 from angrsmtdump import sim_and_dump_rv64
 
@@ -26,8 +27,22 @@ def test_complete():
 
     from angrsmtdump.executions import executions
 
-    assert "decompile.executions.ArchRISCV64" in str(executions[0].arch.__class__)
+    assert "angrsmtdump.executions.ArchRISCV64" in str(executions[0].arch.__class__)
 
     assert executions[0].code == code[0]
 
     assert executions[0].init_registers["pc"].endswith("000000")
+
+def test_run_subprocess():
+    file =  os.path.join(os.path.dirname(os.path.abspath(__file__)), "executions.py")
+    cmd = [os.environ["PYDROFOILANGR"], "-m", "angrsmtdump", "-arch", "rv64", "-file", file, "-opcodes", str(" ".join([str(267386895)]))]
+    subprocess.check_call(" ".join(cmd),shell=True)
+
+    assert os.path.exists(file)
+
+    from angrsmtdump.test.executions import executions
+
+    assert len(executions) == 1
+
+    assert executions[0].code == [267386895]
+    assert executions[0].init_registers["pc"] == "#x0000000000000000"
