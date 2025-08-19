@@ -24,13 +24,20 @@ def dump_executions(executions, filename):
             outfile.write("\n")
             outfile.write("executions.append(_" + str(i) + "_Execution)\n\n")
 
+def dump_code(code, filename, verbose=False):
+    with open(filename, "w") as outfile:
+        outfile.write("code = [")
+        for i, instr in enumerate(code):
+                outfile.write("%d," % instr[0])
+        outfile.write("]")
+
 def dump_all_arch_class_str():
     """ archinfo is missing rv64 on py2"""
     s = [gen_archs.STR_ArchRISCV64]
     #s.append(gen_archs.ArchAArch64)
     return "\n".join(s)
 
-def extract_all_regs_mem(res_regs , res_mem,  init_regs, init_mem, arch):
+def extract_all_regs_mem(res_regs , res_mem,  init_regs, init_mem, arch, verbose=False):
     if None in (res_regs , res_mem,  init_regs, init_mem, arch):
         return res_regs , res_mem,  init_regs, init_mem
     return extract_registers(res_regs, arch), extract_memory(res_mem, []), extract_registers(init_regs, arch), extract_memory(init_mem, [])
