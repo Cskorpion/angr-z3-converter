@@ -6,7 +6,7 @@ from angrsmtdump.decompile import get_z3_for_machine_code_rv64
 from angrsmtdump import sim_and_dump_rv64, sim_and_dump_arm64
 
 def test_load_angr_simple():
-    res_regs, res_mem, init_regs, init_mem = get_z3_for_machine_code_rv64(0x07300613, 0, {})
+    state, res_regs, res_mem, init_regs, init_mem = get_z3_for_machine_code_rv64(0x07300613, 0, {}, False, False)
     assert "+" in str(res_regs.x12)
     assert "0x73" in str(res_regs.x12)
 
@@ -22,6 +22,31 @@ def test_complete():
     ]
 
     sim_and_dump_rv64(code)
+
+    file =  os.path.join(os.path.dirname(os.path.abspath(angrsmtdump.__file__)), "executions.py")
+    assert os.path.exists(file)
+
+    from angrsmtdump.executions import executions
+
+    assert "angrsmtdump.executions.ArchRISCV64" in str(executions[0].arch.__class__)
+
+    assert executions[0].code == code[0]
+
+    assert executions[0].init_registers["pc"].endswith("000000")
+
+
+def test_complete_pcode():
+    code = [
+        [0x07300613], # li   x12 x0  115
+        [0x003f71b3], # and  x3  x30 x3
+        [0x03f71a13], # slli x20 x14 63 slli by 115 is ileagal = 0x07371a13
+        [0x3e804093], # xori x1  x0 1000
+        [0x00000013], # nop = addi x0 x0 0
+        [0x0ff0000f], # fence
+        [0x04d3e893], # ori  x17 x7 77 
+    ]
+
+    sim_and_dump_rv64(code, usepypcode=True)
 
     file =  os.path.join(os.path.dirname(os.path.abspath(angrsmtdump.__file__)), "executions.py")
     assert os.path.exists(file)
@@ -50,7 +75,7 @@ def test_run_subprocess():
 
 def test_debug_reg_50():
     import claripy
-    res_regs, res_mem, init_regs, init_mem = get_z3_for_machine_code_rv64(0xff44c13, 0, {}, True) #xori x24, x8, 255
+    state, res_regs, res_mem, init_regs, init_mem = get_z3_for_machine_code_rv64(0xff44c13, 0, {}, False, True) #xori x24, x8, 255
     assert not "reg_50" in str(res_regs.x24)
 
 
@@ -59,7 +84,7 @@ def test_find_reference_error_rv64():
     import tempfile
 
     print("generate code")
-    code = generate_machine_code_rv64(1, True)
+    code = generate_machine_code_rv64(64, True)
 
     #file = os.path.join(os.path.dirname(os.path.abspath(angrsmtdump.__file__)), "dummy.py")
     file = tempfile.NamedTemporaryFile()
@@ -92,6 +117,21 @@ def test_find_reference_error_arm():
     file = tempfile.NamedTemporaryFile()
 
     print("simulate code")
-    sim_and_dump_arm64(code, file.name, True)
+    sim_and_dump_arm64(code, file.name, usepypcode=False, verbose=True)
+
+    file.close()
+ 
+def test_generate_and_simulate_pcode_rv64():
+    from generate import generate_machine_code_rv64
+    import tempfile
+
+    print("generate code")
+    code = generate_machine_code_rv64(64, True)
+
+    #file = os.path.join(os.path.dirname(os.path.abspath(angrsmtdump.__file__)), "dummy.py")
+    file = tempfile.NamedTemporaryFile()
+
+    print("simulate code")
+    sim_and_dump_rv64(code, file.name, True, False)
 
     file.close()

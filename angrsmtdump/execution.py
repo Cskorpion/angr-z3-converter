@@ -37,10 +37,24 @@ def dump_all_arch_class_str():
     #s.append(gen_archs.ArchAArch64)
     return "\n".join(s)
 
-def extract_all_regs_mem(res_regs , res_mem,  init_regs, init_mem, arch, verbose=False):
-    if None in (res_regs , res_mem,  init_regs, init_mem, arch):
-        return res_regs , res_mem,  init_regs, init_mem
-    return extract_registers(res_regs, arch), extract_memory(res_mem, []), extract_registers(init_regs, arch), extract_memory(init_mem, [])
+def extract_all_regs_mem(state, init_regs, init_mem, arch, verbose=False):
+    if None in (state, init_regs, init_mem, arch):
+        return None , None,  init_regs, init_mem
+    return extract_registers_from_state(state, arch), extract_memory_from_state(state, arch), extract_registers(init_regs, arch), extract_memory(init_mem, arch)
+
+def extract_registers_from_state(state, arch):
+    z3_regs = {} 
+    if isinstance(state.regs, dict):
+        for regname in list(arch.registers.keys()):
+            z3_regs[regname] = claripy.backends.z3.convert(state.regs[regname]).sexpr()
+    else:
+        for regname in list(arch.registers.keys()):
+            z3_regs[regname] = claripy.backends.z3.convert(getattr(state.regs, regname)).sexpr()
+    return z3_regs   
+
+def extract_memory_from_state(state, arch):
+    z3_mem = {}
+    return z3_mem
 
 def extract_registers(registers, arch):
     z3_regs = {}
@@ -69,10 +83,11 @@ class Execution(object):
         self.result_reg_values = res_regs
         self.result_memory_values = res_mem 
         self.load_addr = load_addr
-        self.broken =  None in (res_regs , res_mem,  init_regs, init_mem, arch)
+        self.broken = None in (res_regs , res_mem,  init_regs, init_mem, arch)
+        if self.broken: print((res_regs , res_mem,  init_regs, init_mem, arch))
 
     def to_py2(self, pref=""):
-        if self.broken: return "\'Broken\’\n"
+        if self.broken: return " \n".join((str((self.res_regs, self.res_mem, self.init_regs, self.init_mem, self.arch)),"\'Broken\’\n"))
         code = []
         pref = "_" + pref
         code.append(pref + "_code = %s " % str(self.code))

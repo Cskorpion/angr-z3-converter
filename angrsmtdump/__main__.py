@@ -9,6 +9,7 @@ if __name__ ==  "__main__":
     verbose = False
     use_cpy_for_angr = False
     only_generate = False
+    usepypcode = False
     i = 1
     print(sys.argv)
     if len(sys.argv) < 7:
@@ -37,6 +38,10 @@ if __name__ ==  "__main__":
             only_generate = True
             i += 1
             continue
+        elif sys.argv[i] == "-pypcode":
+            usepypcode = True
+            i += 1
+            continue
         else:
             assert 0, "invalid args"
         i += 2
@@ -51,8 +56,8 @@ if __name__ ==  "__main__":
                 dump_code(opcodes, outfile, verbose=verbose)
                 sys.exit(0)
         if use_cpy_for_angr and '__pypy__' in sys.builtin_module_names:
-            external_sim_and_dump_rv64(opcodes, outfile, verbose=verbose)
+            external_sim_and_dump_rv64(opcodes, outfile, usepypcode=usepypcode, verbose=verbose)
         else:
-            sim_and_dump_rv64(opcodes, outfile, verbose=verbose)
+            sim_and_dump_rv64(opcodes, outfile, usepypcode=usepypcode, verbose=verbose)
     else:
         assert 0, "unsupported arch %s" % arch

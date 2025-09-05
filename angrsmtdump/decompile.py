@@ -2,36 +2,52 @@ import angr, claripy
 import archinfo
 import logging
 
-def get_z3_for_machine_code_arm64(code, load_addr=0, regs_to_init_dict={}, verbose=False):
+def get_z3_for_machine_code_arm64(code, load_addr=0, regs_to_init_dict={}, usepypcode=False, verbose=False):
     if not verbose:
         logging.getLogger('angr').setLevel('FATAL')
     regs_to_init_dict = regs_to_init_dict if regs_to_init_dict != {} else {"pc": claripy.BVV(0, 64)}
-    byte_mc_code = preprocess_mc(code, False, 4)
-    jump_instr=[0x000056e3.to_bytes(4, byteorder="little"),  0xffffff0a.to_bytes(4, byteorder="little")]
-    project, state = init_project(byte_mc_code, archinfo.ArchAArch64(), load_addr, jump_instr, len(byte_mc_code) * 4, 4)
-    init_regs = init_registers_blank(regs_to_init_dict, state, archinfo.ArchAArch64(), verbose=verbose)
-    concrete_init_regs = init_registers_concrete(regs_to_init_dict, state, archinfo.ArchAArch64(), verbose=verbose)
+    if usepypcode:
+        arch = archinfo.ArchPcode("ARM TODO")
+        ncode = code + [0x000056e3, 0xffffff0a]
+        byte_mc_code = preprocess_mc_pcode(ncode, False, 4)
+        #pcode = translate_to_pcode(ncode, "ARM TODO",True) 
+        project, state = init_project_pcode(byte_mc_code, arch, 0)
+    else:
+        arch = archinfo.ArchAArch64()
+        byte_mc_code = preprocess_mc(code, False, 4)
+        jump_instr=[0x000056e3.to_bytes(4, byteorder="little"),  0xffffff0a.to_bytes(4, byteorder="little")]
+        project, state = init_project(byte_mc_code, arch, load_addr, jump_instr, len(byte_mc_code) * 4, 4)
+    init_regs = init_registers_blank(regs_to_init_dict, state, arch, verbose=verbose)
+    concrete_init_regs = init_registers_concrete(regs_to_init_dict, state, arch, verbose=verbose)
     init_regs.update(concrete_init_regs)
     init_mem = state.memory
-    res_regs, res_mem = step_bb_ret_regs_and_mem(project, state, "r6", archinfo.ArchAArch64(), verbose=verbose)
+    activestate, res_regs, res_mem = step_bb_ret_regs_and_mem(project, state, "r6", arch, verbose=verbose)
     if res_regs == None and res_mem == None:
-        return None, None, None, None
-    return res_regs, res_mem, init_regs, init_mem
+        return None, None, None, None, None
+    return activestate, res_regs, res_mem, init_regs, init_mem
 
-def get_z3_for_machine_code_rv64(code, load_addr=0, regs_to_init_dict={}, verbose=False):
+def get_z3_for_machine_code_rv64(code, load_addr=0, regs_to_init_dict={}, usepypcode=False, verbose=False):
     if not verbose:
         logging.getLogger('angr').setLevel('FATAL')
     regs_to_init_dict = regs_to_init_dict if regs_to_init_dict != {} else {"pc": claripy.BVV(0, 64)}
-    byte_mc_code = preprocess_mc(code, True, 4)
-    project, state = init_project(byte_mc_code, archinfo.ArchRISCV64(), load_addr, [0x00060663.to_bytes(4, byteorder="little")], len(byte_mc_code) * 4, 4)
-    init_regs = init_registers_blank(regs_to_init_dict, state, archinfo.ArchRISCV64(), verbose=verbose)
-    concrete_init_regs = init_registers_concrete(regs_to_init_dict, state, archinfo.ArchRISCV64(), verbose=verbose)
+    if usepypcode:
+        arch = archinfo.ArchPcode("RISCV:LE:64:RV64G")
+        ncode = code + [0x00060663]
+        byte_mc_code = preprocess_mc_pcode(ncode, True, 4)
+        #pcode = translate_to_pcode(byte_mc_code, "RISCV:LE:64:RV64G",True)
+        project, state = init_project_pcode(byte_mc_code, arch, 0)
+    else:
+        arch = archinfo.ArchRISCV64()
+        byte_mc_code = preprocess_mc(code, True, 4)
+        project, state = init_project(byte_mc_code, arch, load_addr, [0x00060663.to_bytes(4, byteorder="little")], len(byte_mc_code) * 4, 4)
+    init_regs = init_registers_blank(regs_to_init_dict, state, arch, verbose=verbose)
+    concrete_init_regs = init_registers_concrete(regs_to_init_dict, state, arch, verbose=verbose)
     init_regs.update(concrete_init_regs)
     init_mem = state.memory
-    res_regs, res_mem = step_bb_ret_regs_and_mem(project, state, "x12", archinfo.ArchRISCV64(), verbose=verbose)
+    activestate, res_regs, res_mem = step_bb_ret_regs_and_mem(project, state, "x12", arch, verbose=verbose)
     if res_regs == None and res_mem == None:
-        return None, None, None, None
-    return res_regs, res_mem, init_regs, init_mem
+        return None, None, None, None, None
+    return activestate, res_regs, res_mem, init_regs, init_mem
 
 def step_bb_ret_regs_and_mem(project, state, branch_reg, arch, verbose=False):
     simulation = project.factory.simulation_manager(state)
@@ -43,12 +59,12 @@ def step_bb_ret_regs_and_mem(project, state, branch_reg, arch, verbose=False):
             print("step claripy %s register value: %s" % (regname, str(regval)))
     if len(states) == 2:
         assert set(dir(states[-1].regs)) == set(list(arch.registers.keys())) # just a check wheter we really get all registers
-        return states[1].regs, states[1].memory # 1 = false
+        return states[1], states[1].regs, states[1].memory # 1 = false
     elif len(states) == 1:
         # case: x12 (rv64) or r5 (arm64) was set to a const by code
         print("found only one state, %s must have been set by code" % branch_reg)
         assert set(dir(states[-1].regs)) == set(list(arch.registers.keys())) # just a check wheter we really get all registers
-        return states[0].regs, states[0].memory
+        return states[0], states[0].regs, states[0].memory
     elif len(simulation.errored) > 0:
         for err in simulation.errored:
             print(err)
@@ -83,7 +99,35 @@ def init_registers_blank(mapping, state, arch,  verbose=False):
         init_regs[regname] = val
 
     return init_regs 
+
+def translate_to_pcode(code, pcode_arch, verbose=False):
+    from pypcode import Context
+
+    ctx = Context(pcode_arch)
+
+    pcode = ctx.translate(code)
+
+    if verbose:
+        print("pcode:\n %s" %str(pcode))
+
+    return pcode
+
+def preprocess_mc_pcode(code, little_endian, opcode_size=4):
+    """ turn int opcodes into bytes """
+    if not isinstance(code, list): 
+        code = [code]
     
+    for instr in code:
+        if isinstance(instr, int):
+            val = code[-1]
+            if len(code) == 1: return val.to_bytes(opcode_size, byteorder="little" if little_endian else "big")
+            for i in range(1, len(code)):
+                val = val << opcode_size * 8
+                val += code[-i]
+            return val.to_bytes(opcode_size * len(code), byteorder="little" if little_endian else "big")
+        else:
+            assert 0, "cant convert opcode from %s to bytes" % str(instr.__class__)
+
 def preprocess_mc(code, little_endian, opcode_size=4):
     """ turn int opcodes into bytes """
     if not isinstance(code, list): 
@@ -98,6 +142,19 @@ def preprocess_mc(code, little_endian, opcode_size=4):
         else:
             assert 0, "cant convert opcode from %s to bytes" % str(instr.__class__)
     return byte_mc_code
+
+def init_project_pcode(code, arch, load_Addr):
+    project = angr.load_shellcode(code, arch=arch, start_offset=load_Addr,
+                                   load_address=load_Addr, selfmodifying_code=True,
+                                   thumb=False)
+    entry_state = project.factory.entry_state(add_options= {
+        #angr.options.SYMBOL_FILL_UNCONSTRAINED_MEMORY,
+        #angr.options.ZERO_FILL_UNCONSTRAINED_MEMORY,
+        #angr.options.ZERO_FILL_UNCONSTRAINED_REGISTERS,
+        #angr.options.SYMBOL_FILL_UNCONSTRAINED_REGISTERS
+    })
+
+    return project, entry_state
 
 def init_project(asm, arch, load_Addr, jump_instr, jump_load_addr, code_size=4):
     project = angr.load_shellcode(asm[0], arch=arch, start_offset=load_Addr,
