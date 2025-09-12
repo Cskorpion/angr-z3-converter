@@ -2,6 +2,7 @@ import os
 import angrsmtdump
 import subprocess
 import pytest
+import tempfile
 from angrsmtdump.decompile import get_z3_for_machine_code_rv64
 from angrsmtdump import sim_and_dump_rv64, sim_and_dump_arm64
 
@@ -123,7 +124,6 @@ def test_find_reference_error_arm():
  
 def test_generate_and_simulate_pcode_rv64():
     from generate import generate_machine_code_rv64
-    import tempfile
 
     print("generate code")
     code = generate_machine_code_rv64(64, True)
@@ -135,3 +135,36 @@ def test_generate_and_simulate_pcode_rv64():
     sim_and_dump_rv64(code, file.name, True, False)
 
     file.close()
+
+def test_weird_formula():
+    # addiw x6, x19, 2009
+    code = [[0x7d99831b]]
+
+    file = tempfile.NamedTemporaryFile()
+
+    state, _, _, _, _ = get_z3_for_machine_code_rv64([0x7d99831b], 0, {}, False, True)
+
+    import claripy, z3
+    x6val = z3.simplify(claripy.backends.z3.convert(getattr(state.regs, "x6"))).sexpr()
+
+    smtfile = os.path.join(os.path.dirname(os.path.abspath(angrsmtdump.__file__)), "smt.txt")
+    with open(smtfile, "w") as ofile:
+        ofile.write(x6val)
+
+    import pdb; pdb.set_trace()
+
+    assert not "[" in  x6val
+    #sim_and_dump_rv64(code, file.name, False, True)
+
+    file.close()
+    assert 0
+
+
+def test_clui_x0_not_allowed():
+    
+    file = tempfile.NamedTemporaryFile()
+
+    state, _, _, _, _ = get_z3_for_machine_code_rv64([24669], 0, {}, False, True)
+
+    file.close()
+    assert 0
