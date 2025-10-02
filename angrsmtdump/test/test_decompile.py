@@ -7,7 +7,7 @@ from angrsmtdump.decompile import get_z3_for_machine_code_rv64
 from angrsmtdump import sim_and_dump_rv64, sim_and_dump_arm64
 
 def test_load_angr_simple():
-    state, res_regs, res_mem, init_regs, init_mem = get_z3_for_machine_code_rv64(0x07300613, 0, {}, False, False)
+    state, res_regs, res_mem, init_regs, init_mem = get_z3_for_machine_code_rv64(0x07300613, 0, {}, 0x09138063, False, False)
     assert "+" in str(res_regs.x12)
     assert "0x73" in str(res_regs.x12)
 
@@ -76,16 +76,16 @@ def test_run_subprocess():
 
 def test_debug_reg_50():
     import claripy
-    state, res_regs, res_mem, init_regs, init_mem = get_z3_for_machine_code_rv64(0xff44c13, 0, {}, False, True) #xori x24, x8, 255
+    state, res_regs, res_mem, init_regs, init_mem = get_z3_for_machine_code_rv64(0xff44c13, 0, {}, 0x09138063,False, True) #xori x24, x8, 255
     assert not "reg_50" in str(res_regs.x24)
 
 
-def test_find_reference_error_rv64():
-    from generate import generate_machine_code_rv64
+def test_gen_and_run_random():
+    from generate import generate_machine_code_randint_rv64
     import tempfile
 
     print("generate code")
-    code = generate_machine_code_rv64(64, True)
+    code = generate_machine_code_randint_rv64(64, True)
 
     #file = os.path.join(os.path.dirname(os.path.abspath(angrsmtdump.__file__)), "dummy.py")
     file = tempfile.NamedTemporaryFile()
@@ -96,7 +96,7 @@ def test_find_reference_error_rv64():
     file.close()
 
 
-def test_find_reference_error_arm():
+def test_run_single_arm64():
     import tempfile
 
     print("generate code")
@@ -142,7 +142,7 @@ def test_weird_formula():
 
     file = tempfile.NamedTemporaryFile()
 
-    state, _, _, _, _ = get_z3_for_machine_code_rv64([0x7d99831b], 0, {}, False, True)
+    state, _, _, _, _ = get_z3_for_machine_code_rv64([0x7d99831b], 0, {}, 0x09138063, False, True)
 
     import claripy, z3
     x6val = z3.simplify(claripy.backends.z3.convert(getattr(state.regs, "x6"))).sexpr()
@@ -151,20 +151,26 @@ def test_weird_formula():
     with open(smtfile, "w") as ofile:
         ofile.write(x6val)
 
-    import pdb; pdb.set_trace()
-
     assert not "[" in  x6val
     #sim_and_dump_rv64(code, file.name, False, True)
 
     file.close()
-    assert 0
 
-
-def test_clui_x0_not_allowed():
-    
+def test_loadw_rv64():
+    import claripy, z3
     file = tempfile.NamedTemporaryFile()
+    # 0xf918a423 sw , 0xf888a883 lw
+    activestate, res_regs, res_mem, init_regs, init_mem = get_z3_for_machine_code_rv64([0x00089883], 0, {}, 0x09138063, False, True)
+    x17val = claripy.backends.z3.convert(getattr(activestate.regs, "x17")).sexpr()
+    x17vals = z3.simplify(claripy.backends.z3.convert(getattr(activestate.regs, "x17"))).sexpr()
+    import pdb; pdb.set_trace()
+    #memx17val = z3.simplify(claripy.backends.z3.convert(res_mem.load(getattr(res_regs, "x17"), 32))).sexpr()
 
-    state, _, _, _, _ = get_z3_for_machine_code_rv64([24669], 0, {}, False, True)
+    smtfile = os.path.join(os.path.dirname(os.path.abspath(angrsmtdump.__file__)), "smt.txt")
+    with open(smtfile, "w") as ofile:
+        ofile.write(x17val)
+
+
+    #sim_and_dump_rv64(code, file.name, False, True)
 
     file.close()
-    assert 0

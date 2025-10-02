@@ -26,20 +26,19 @@ def get_z3_for_machine_code_arm64(code, load_addr=0, regs_to_init_dict={}, usepy
         return None, None, None, None, None
     return activestate, res_regs, res_mem, init_regs, init_mem
 
-def get_z3_for_machine_code_rv64(code, load_addr=0, regs_to_init_dict={}, usepypcode=False, verbose=False):
+def get_z3_for_machine_code_rv64(code, load_addr=0, regs_to_init_dict={}, branch_instr=0x09138063, usepypcode=False, verbose=False):
     if not verbose:
         logging.getLogger('angr').setLevel('FATAL')
     regs_to_init_dict = regs_to_init_dict if regs_to_init_dict != {} else {"pc": claripy.BVV(0, 64)}
     if usepypcode:
         arch = archinfo.ArchPcode("RISCV:LE:64:RV64G")
-        ncode = code + [0x00060663]
+        ncode = code + [branch_instr]  # was previously 0x00060663
         byte_mc_code, num_bytes = preprocess_mc_rv64_pcode(ncode, True)
-        #pcode = translate_to_pcode(byte_mc_code, "RISCV:LE:64:RV64G",True)
         project, state = init_project_pcode(byte_mc_code, arch, 0)
     else:
         arch = archinfo.ArchRISCV64()
         byte_mc_code, num_bytes = preprocess_mc_rv64(code, True)
-        project, state = init_project(byte_mc_code, arch, load_addr, [0x00060663.to_bytes(4, byteorder="little")], num_bytes, 4)
+        project, state = init_project(byte_mc_code, arch, load_addr, [branch_instr.to_bytes(4, byteorder="little")], num_bytes, 4)
     init_regs = init_registers_blank(regs_to_init_dict, state, arch, verbose=verbose)
     concrete_init_regs = init_registers_concrete(regs_to_init_dict, state, arch, verbose=verbose)
     init_regs.update(concrete_init_regs)
@@ -55,7 +54,9 @@ def step_bb_ret_regs_and_mem(project, state, branch_reg, arch, verbose=False):
     simulation = simulation.step()
     states = simulation.active
     if verbose:
+        assert len(states) > 0, "found no states"
         for regname in list(arch.registers.keys()):
+            if "hpmcounter" in regname or "csr" in regname: continue # rv64: dont write like all 64464554757 registers into stdout # usually interrested in x1-x31
             regval = getattr(states[-1].regs, regname)
             print("step claripy %s register value: %s" % (regname, str(regval)))
     if len(states) == 2:
@@ -96,7 +97,7 @@ def init_registers_blank(mapping, state, arch,  verbose=False):
     for regname, size in arch.registers.items():# TODO: aliasing should be ok?
         if regname in mapping: continue
         val =  claripy.BVS(regname, size[1] * 8)
-        if verbose:
+        if verbose and False:
             print("init %s with %d-bit bv %s" % (regname, size[1] * 8, str(val)))
         state.registers.store(regname, val)
         init_regs[regname] = val
@@ -119,41 +120,39 @@ def preprocess_mc_arm64_pcode(code, little_endian, opcode_size=4):
     """ turn int opcodes into bytes """
     if not isinstance(code, list): 
         code = [code]
-    assert len(code) == 1, "multiple instructions not allowed yet"
-    for instr in code:
-        if isinstance(instr, int):
-            val = code[-1]
-            if len(code) == 1: return val.to_bytes(opcode_size, byteorder="little" if little_endian else "big")
-            for i in range(1, len(code)):
-                val = val << opcode_size * 8
-                val += code[-i]
-            return val.to_bytes(opcode_size * len(code), byteorder="little" if little_endian else "big")
-        else:
-            assert 0, "cant convert opcode from %s to bytes" % str(instr.__class__)
+    #assert len(code) == 1, "multiple instructions not allowed yet"
+    val = code[-1]
+    if len(code) == 1: return val.to_bytes(opcode_size, byteorder="little" if little_endian else "big")
+    for i in range(2, len(code)+1):
+        val = val << opcode_size * 8
+        val += code[-i]
+    return val.to_bytes(opcode_size * len(code), byteorder="little" if little_endian else "big")
 
 
 def preprocess_mc_rv64_pcode(code, little_endian):
     """ turn int opcodes into bytes """
     if not isinstance(code, list): 
         code = [code]
-    assert len(code) == 1, "multiple instructions not allowed yet"
-    for instr in code:
-        if isinstance(instr, int):
-            val = code[-1]
-            if len(code) == 1: 
-                if val & 0b11 == 0b11:
-                    return val.to_bytes(4, byteorder="little" if little_endian else "big")
-                else:
-                    return val.to_bytes(2, byteorder="little" if little_endian else "big")
-            num_bytes = 4 if code[-1] & 0b11 == 0b11 else 2
-            for i in range(1, len(code)):
-                opcodesize = 4 if code[-i] & 0b11 else 2
-                val = val << opcodesize * 8
-                num_bytes += opcodesize
-                val += code[-i]
-            return val.to_bytes(num_bytes, byteorder="little" if little_endian else "big"), num_bytes
+    #assert len(code) == 1, "multiple instructions not allowed yet"
+    val = code[-1]
+    if len(code) == 1: 
+        if val & 0b11 == 0b11:
+            return val.to_bytes(4, byteorder="little" if little_endian else "big")
         else:
-            assert 0, "cant convert opcode from %s to bytes" % str(instr.__class__)
+            return val.to_bytes(2, byteorder="little" if little_endian else "big")
+    num_bytes = 4 if (val & 0b11 == 0b11) else 2
+    for i in range(2, len(code) + 1):
+        opcodesize = 4 if (code[-i] & 0b11 == 0b11) else 2
+        val = val << (opcodesize * 8)
+        num_bytes += opcodesize
+        val += code[-i]
+        #print("bytes: " + str(val.to_bytes(num_bytes, byteorder="little" if little_endian else "big")))
+    #from pypcode import Context
+    #ctx = Context("RISCV:LE:64:RV64G")
+    #dx = ctx.translate(val.to_bytes(num_bytes, byteorder="little" if little_endian else "big"))
+    #print(dx)
+    return val.to_bytes(num_bytes, byteorder="little" if little_endian else "big"), num_bytes
+
 
 def preprocess_mc_arm64(code, little_endian, opcode_size=4):
     """ turn int opcodes into bytes """
@@ -219,12 +218,3 @@ def init_project(asm, arch, load_Addr, jump_instr, jump_load_addr, code_size=4):
     for i, instr in enumerate(jump_instr):
         entry_state.memory.store(jump_load_addr + i * code_size * 8, instr)
     return project, entry_state
-
-def create_input_string_bvs(num):
-    input_chars = [claripy.BVS("char_%d" % i, 8) for i in range(num)]
-    input = claripy.Concat(*input_chars)
-    return input, input_chars
-
-def add_constraints_to_solver(constraints, entry_state):
-    for constrs in constraints:
-        entry_state.solver.add(*constrs)

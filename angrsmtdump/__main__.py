@@ -10,6 +10,7 @@ if __name__ ==  "__main__":
     use_cpy_for_angr = False
     only_generate = False
     usepypcode = False
+    allowed_instrs = None
     i = 1
     print(sys.argv)
     if len(sys.argv) < 7:
@@ -25,6 +26,9 @@ if __name__ ==  "__main__":
             num_ops = int(sys.argv[i+1])
         elif sys.argv[i] == "-opcodes":
             opcodes = [[int(x)] for x in sys.argv[i+1:]]
+            break
+        elif sys.argv[i] == "-types":
+            allowed_instrs = sys.argv[i+1:]
             break
         elif sys.argv[i] == "-verbose":
             verbose = True
@@ -51,7 +55,7 @@ if __name__ ==  "__main__":
     if arch == "rv64":
         if opcodes == None:
             from generate import gen_rv64_code
-            opcodes = gen_rv64_code(num_ops, verbose=verbose)
+            opcodes = gen_rv64_code(num_ops, verbose=verbose, allowed_instrs=allowed_instrs)
             if only_generate: 
                 dump_code(opcodes, outfile, verbose=verbose)
                 sys.exit(0)
