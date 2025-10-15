@@ -7,15 +7,15 @@ def get_z3_for_machine_code_arm64(code, load_addr=0, regs_to_init_dict={}, usepy
         logging.getLogger('angr').setLevel('FATAL')
     regs_to_init_dict = regs_to_init_dict if regs_to_init_dict != {} else {"pc": claripy.BVV(0, 64)}
     if usepypcode:
-        arch = archinfo.ArchPcode("ARM TODO")
-        ncode = code + [0x000056e3, 0xffffff0a]
+        arch = archinfo.ArchPcode("AARCH64:LE:64:v8A")
+        ncode = code + [0xFF0011EB, 0x00040054] # CMP X7, X17 ; BEQ #128
         byte_mc_code = preprocess_mc_arm64_pcode(ncode, False, 4)
-        #pcode = translate_to_pcode(ncode, "ARM TODO",True) 
-        project, state = init_project_pcode(byte_mc_code, arch, 0)
+        pcode = translate_to_pcode(byte_mc_code, "AARCH64:LE:64:v8A",True) 
+        project, state = init_project_pcode(byte_mc_code, arch, load_addr)
     else:
         arch = archinfo.ArchAArch64()
         byte_mc_code = preprocess_mc_arm64(code, False, 4)
-        jump_instr=[0x000056e3.to_bytes(4, byteorder="little"),  0xffffff0a.to_bytes(4, byteorder="little")]
+        jump_instr=[0xFF0011EB.to_bytes(4, byteorder="little"),  0x00040054.to_bytes(4, byteorder="little")] # 0x000056e3 0xffffff0a
         project, state = init_project(byte_mc_code, arch, load_addr, jump_instr, len(byte_mc_code) * 4, 4)
     init_regs = init_registers_blank(regs_to_init_dict, state, arch, verbose=verbose)
     concrete_init_regs = init_registers_concrete(regs_to_init_dict, state, arch, verbose=verbose)
@@ -121,11 +121,15 @@ def preprocess_mc_arm64_pcode(code, little_endian, opcode_size=4):
     if not isinstance(code, list): 
         code = [code]
     #assert len(code) == 1, "multiple instructions not allowed yet"
-    val = code[-1]
+    val = code[0]
     if len(code) == 1: return val.to_bytes(opcode_size, byteorder="little" if little_endian else "big")
-    for i in range(2, len(code)+1):
+    for i in range(1, len(code)):
         val = val << opcode_size * 8
-        val += code[-i]
+        val += code[i]
+    #from pypcode import Context
+    #ctx = Context("AARCH64:LE:64:v8A")
+    #dx = ctx.translate(val.to_bytes(opcode_size * len(code), byteorder="little" if little_endian else "big"))
+    #print(dx)
     return val.to_bytes(opcode_size * len(code), byteorder="little" if little_endian else "big")
 
 

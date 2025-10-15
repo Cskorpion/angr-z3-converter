@@ -3,7 +3,7 @@ import angrsmtdump
 import subprocess
 import pytest
 import tempfile
-from angrsmtdump.decompile import get_z3_for_machine_code_rv64
+from angrsmtdump.decompile import get_z3_for_machine_code_rv64, get_z3_for_machine_code_arm64
 from angrsmtdump import sim_and_dump_rv64, sim_and_dump_arm64
 
 def test_load_angr_simple():
@@ -153,6 +153,56 @@ def test_weird_formula():
 
     assert not "[" in  x6val
     #sim_and_dump_rv64(code, file.name, False, True)
+
+    file.close()
+
+
+def test_rv64_srliw_x31_x5_31_pcode():
+    file = tempfile.NamedTemporaryFile()
+
+    state, _, _, _, _ = get_z3_for_machine_code_rv64([0x1f2df9b], 0, {}, 0x09138063, True, True)
+
+    import claripy, z3
+    t6val = z3.simplify(claripy.backends.z3.convert(getattr(state.regs, "t6"))).sexpr()
+
+    smtfile = os.path.join(os.path.dirname(os.path.abspath(angrsmtdump.__file__)), "smt.txt")
+    with open(smtfile, "w") as ofile:
+        ofile.write(t6val)
+
+    assert not t6val.count("(_ extract 31 31) t0_9_64") == 64
+    #sim_and_dump_rv64(code, file.name, False, True)
+
+    file.close()
+
+def test_arm64_lsr_w1_w1_31_vex():
+    file = tempfile.NamedTemporaryFile()
+
+    state, _, _, _, _ = get_z3_for_machine_code_arm64([0x217C1F53], 0, {}, False, True)
+
+    import claripy, z3
+    w1val = z3.simplify(claripy.backends.z3.convert(getattr(state.regs, "w1"))).sexpr()
+
+    smtfile = os.path.join(os.path.dirname(os.path.abspath(angrsmtdump.__file__)), "smt.txt")
+    with open(smtfile, "w") as ofile:
+        ofile.write(w1val)
+        
+    assert str(w1val) == "(concat #b0000000000000000000000000000000 ((_ extract 31 31) w1_953_32))"
+
+    file.close()
+
+def test_arm64_lsr_w1_w1_31_pcode():
+    file = tempfile.NamedTemporaryFile()
+
+    state, _, _, _, _ = get_z3_for_machine_code_arm64([0x217C1F53], 0, {}, True, True)
+
+    import claripy, z3
+    w1val = z3.simplify(claripy.backends.z3.convert(getattr(state.regs, "w1"))).sexpr()
+
+    smtfile = os.path.join(os.path.dirname(os.path.abspath(angrsmtdump.__file__)), "smt.txt")
+    with open(smtfile, "w") as ofile:
+        ofile.write(w1val)
+
+    assert str(w1val) == "(concat #b0000000000000000000000000000000 ((_ extract 31 31) w1_953_32))"
 
     file.close()
 
