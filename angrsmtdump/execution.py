@@ -10,7 +10,8 @@ PY2_EXECUTION_CLASS = """class Execution(object):
         self.init_memory = init_mem
         self.result_reg_values = res_regs
         self.result_memory_values = res_mem 
-        self.load_addr = load_addr"""
+        self.load_addr = load_addr
+        self.angr = True"""
 
 def dump_executions(executions, filename):
     with open(filename, "w") as outfile:
@@ -75,6 +76,29 @@ def extract_memory(memory, addrs):
     #    z3_regs[regname] = claripy.backends.z3.convert(getattr(registers, regname)).sexpr()
     return z3_mem 
 
+class ExecutionWriter(object):
+    """ Write results immediately instead of keeping them im memory and dumping all at once when finished.
+        This will hopefully reduce memory usage whenusing pypcode instead of VEX"""
+
+    def __init__(self, filename):
+        self.file = open(filename, "w")
+        self.file.write(dump_all_arch_class_str())
+        self.file.write("\n\n")
+        self.file.write(PY2_EXECUTION_CLASS)
+        self.file.write("\n\n")
+        self.file.write("executions = []\n\n")
+        self.ctr = 0
+
+    def write(self, execution):
+        self.file.write(execution.to_py2(str(self.ctr)))
+        self.file.write("\n")
+        self.file.write("executions.append(_" + str(self.ctr) + "_Execution)\n\n")
+        self.ctr += 1
+
+    def close(self):
+        self.file.flush()
+        self.file.close()
+
 class Execution(object):
 
     def __init__(self, code, arch, branch_size, init_regs, init_mem, res_regs, res_mem, load_addr):
@@ -99,10 +123,10 @@ class Execution(object):
         code.append(pref + "_branch_size = %s " % str(self.branch_size))
 
         code.append(pref + "_init_registers = %s " %  str(self.init_registers))
-        code.append(pref + "_init_memory = %s " % str(self.init_memory))
+        code.append(pref + "_init_memory = '%s' " % str(self.init_memory))
         
         code.append(pref + "_result_reg_values = %s " % str(self.result_reg_values)),
-        code.append(pref + "_result_memory_values = %s " % str(self.result_memory_values))
+        code.append(pref + "_result_memory_values = '%s' " % str(self.result_memory_values))
 
         code.append(pref + "_load_addr = %s " % str(self.load_addr))
         code.append(pref + "_Execution =  Execution(%s,%s,%s,%s,%s,%s,%s,%s)" 
