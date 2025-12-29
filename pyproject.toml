@@ -7,7 +7,8 @@ authors = [
 ]
 dependencies = [
     "hypothesis",
-    "angr"
+    "angr",
+    "filelock"
 ]
 requires-python = "<3.12,>=3.9"
 readme = "README.md"

@@ -78,7 +78,7 @@ def extract_memory(memory, addrs):
 
 class ExecutionWriter(object):
     """ Write results immediately instead of keeping them im memory and dumping all at once when finished.
-        This will hopefully reduce memory usage whenusing pypcode instead of VEX"""
+        This will hopefully reduce memory usage when using pypcode instead of VEX"""
 
     def __init__(self, filename):
         self.file = open(filename, "w")

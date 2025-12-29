@@ -4,10 +4,12 @@ import random, os
 
 # partially copied from https://github.com/Bisasamdude/pydrofoil-hypothesis/blob/main/pydrofoilhypothesis/test/test_examples.py
 
-ALLOWED_RV64_INSTR_NAMES = ["ITYPE", "UTYPE", "RTYPE", "SHIFTIOP", "ADDIW", "RTYPEW", "SHIFTIWOP", "C_ADDI",
-                            "C_ADDI16SP", "C_LUI", "C_SRLI", "LOAD"] # STORE  "BTYPE", "RISCV_JAL"
-DISALLOWED_RV64_INSTR_NAMES = ["ZBS_RTYPE", "ZICOND_RTYPE", "C_ADDI4SPN","C_ADDIW","C_ADDI_HINT",
-                               "C_LUI_HINT", "C_SRLI_HINT"]
+ALLOWED_RV64_INSTR_NAMES = ["ITYPE", "UTYPE", "RTYPE", "SHIFTIOP"]#, "ADDIW", "RTYPEW", "SHIFTIWOP", "C_ADDI",
+                            #"C_ADDI16SP", "C_LUI", "C_SRLI"] #  LOAD STORE  "BTYPE", "RISCV_JAL"
+DISALLOWED_RV64_INSTR_NAMES = ["FENCE_RESERVED",  "FENCEI_RESERVED", "C_LUI_HINT", "C_ADDI_HINT", "RTYPEW"] # "ZBS_RTYPE" ZICOND_RTYPE C_ADDI4SPN C_ADDIW C_SRLI_HINT 
+
+ALLOWED_RV64_BIT_MANIPULATION_EXTENSION_NAMES = ["ZBA_RTYPE", "ZBA_RTYPEW", "ZBB_RTYPE", "ZBB_RTYPEW", "RISCV_CLMUL", "RISCV_CLMULH", "RISCV_CLMULR",
+                                    "ZBS_IOP", "ZBS_RTYPE"]
 
 CODEFILE = os.path.join("/home/christophj/Dokumente/Uni/Projektarbeit/angr-z3-converter/" "code.txt")
 
@@ -47,6 +49,23 @@ def get_argstrategy_constructor():
     return types
 
 
+def generate_machine_code_unfiltered_randint_rv64_str(num_code=128, verbose=False):
+    m = _pydrofoil.RISCV64()
+    code = set()
+
+    while(len(code)) < num_code:
+        opcode = random.randint(0, 2**32)
+        instruction = m.lowlevel.encdec_backwards(opcode)
+        instr_name = str(instruction)
+        if "ILLEGAL" in instr_name: 
+            instruction = m.lowlevel.encdec_compressed_backwards(opcode)
+            instr_name = str(instruction)
+            if "ILLEGAL" in instr_name: continue
+            opcode &= 0b1111111111111111
+        code.add(instr_name)
+
+    return [[c] for c in list(code)]
+
 def generate_machine_code_randint_rv64_str(num_code=128, verbose=False):
     m = _pydrofoil.RISCV64()
     code = set()
@@ -58,26 +77,37 @@ def generate_machine_code_randint_rv64_str(num_code=128, verbose=False):
         if "ILLEGAL" in instr_name: 
             instruction = m.lowlevel.encdec_compressed_backwards(opcode)
             instr_name = str(instruction)
+            if "ILLEGAL" in instr_name: continue
             if "C_LUI" in instr_name: 
                 if "bitvector(5, 0b00000)" in instr_name: continue # quick fix for x0 as target in CLUI
-            if "ILLEGAL" in instr_name: continue
             opcode &= 0b1111111111111111
-        ok = False
+        ok = None
         for ai in ALLOWED_RV64_INSTR_NAMES:
             if instr_name.startswith(ai): ok = True
             for di in DISALLOWED_RV64_INSTR_NAMES:
-                if instr_name.startswith(di): ok = False
-            if ok:
-                if verbose: print(hex(opcode), instr_name)
-                code.add(str(instruction))
+                if instr_name.startswith(di): 
+                    ok = False
+                    break
+            if ok == False: break
+        if ok:
+            if verbose: print(hex(opcode), instr_name)
+            code.add(str(instruction))
 
     return [[c] for c in list(code)]
 
 
-def generate_machine_code_randint_rv64(num_code=128, verbose=False):
+def generate_machine_code_randint_rv64(num_code=128, verbose=False,
+                                        allowed_instrs=None,
+                                        disallowed_instrs=None):
     m = _pydrofoil.RISCV64()
     code = set()
 
+    if allowed_instrs is None: 
+        disallowed_instrs = DISALLOWED_RV64_INSTR_NAMES
+        allowed_instrs = ALLOWED_RV64_INSTR_NAMES
+    else:
+        disallowed_instrs = []
+    
     while(len(code)) < num_code:
         opcode = random.randint(0, 2**32)
         instruction = m.lowlevel.encdec_backwards(opcode)
@@ -85,23 +115,85 @@ def generate_machine_code_randint_rv64(num_code=128, verbose=False):
         if "ILLEGAL" in instr_name: 
             instruction = m.lowlevel.encdec_compressed_backwards(opcode)
             instr_name = str(instruction)
+            if "ILLEGAL" in instr_name: continue
             if "C_LUI" in instr_name: 
                 if "0b00000" in instr_name: continue # quick fix for x0 as target in CLUI
-            if "ILLEGAL" in instr_name: continue
+            if opcode == 0x8081: import pdb; pdb.set_trace()
             opcode &= 0b1111111111111111
-        ok = False
-        for ai in ALLOWED_RV64_INSTR_NAMES:
+        ok = None
+        for ai in allowed_instrs: # TODO move this into a seperate function
             if instr_name.startswith(ai): ok = True
-            for di in DISALLOWED_RV64_INSTR_NAMES:
-                if instr_name.startswith(di): ok = False
-            if ok:
-                if verbose: print(hex(opcode), instr_name)
-                code.add(opcode)
+            for di in disallowed_instrs:
+                if instr_name.startswith(di): 
+                    ok = False
+                    break
+            if ok == False: break
+        if ok:
+            if verbose: print(hex(opcode), instr_name)
+            code.add(opcode)
     codelist = [[c] for c in list(code)]
-    
-    _sync_dump_append_opcodes(codelist, CODEFILE)
+
+    #_sync_dump_append_opcodes(codelist, CODEFILE)
 
     return codelist
+
+def generate_machine_code_names_randint_rv64(num_code=128, verbose=False,
+                                        allowed_instrs=None,
+                                        disallowed_instrs=None):
+    m = _pydrofoil.RISCV64()
+    code = {}
+    done = False
+
+    if allowed_instrs is None: 
+        disallowed_instrs = DISALLOWED_RV64_INSTR_NAMES
+        allowed_instrs = ALLOWED_RV64_INSTR_NAMES
+    else:
+        disallowed_instrs = []
+    
+    while not done:
+        opcode = random.randint(0, 2**32)
+        instruction = m.lowlevel.encdec_backwards(opcode)
+        instr_name = str(instruction)
+        if "ILLEGAL" in instr_name: 
+            instruction = m.lowlevel.encdec_compressed_backwards(opcode)
+            instr_name = str(instruction)
+            if "ILLEGAL" in instr_name: continue
+            if "C_LUI" in instr_name: 
+                if "0b00000" in instr_name: continue # quick fix for x0 as target in CLUI
+            if opcode == 0x8081: import pdb; pdb.set_trace()
+            opcode &= 0b1111111111111111
+        ok = None
+        for ai in allowed_instrs: # TODO move this into a seperate function
+            if instr_name.startswith(ai): ok = True
+            for di in disallowed_instrs:
+                if instr_name.startswith(di): 
+                    ok = False
+                    break
+            if ok == False: break
+        if ok:
+            if instruction.__class__ in code and len(code[instruction.__class__]) == num_code: continue
+            #import pdb; pdb.set_trace()
+            if verbose: print(hex(opcode), instr_name)
+            if instruction.__class__ not in code:
+                code[instruction.__class__] = {opcode}
+            else:
+                code[instruction.__class__].add(opcode)
+            
+            done = True
+
+            if not len(code)  == len(ALLOWED_RV64_INSTR_NAMES):
+                done = False
+                continue
+
+            for k,v in code.items():
+                if not len(v) == num_code: 
+                    done = False
+                    break
+    #codelist = [[c] for c in list(code)]
+
+    #_sync_dump_append_opcodes(codelist, CODEFILE)
+
+    return code
 
 
 
